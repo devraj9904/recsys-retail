@@ -15,8 +15,8 @@ import numpy as np
 if sys.platform == "darwin":
     # On macOS, PyTorch and faiss-cpu each bundle their own libomp. Two OpenMP
     # runtimes in one process crash inside faiss search (segfault / abort).
-    # Allow the duplicate runtime and keep faiss single-threaded; per-query
-    # latency is unaffected and batch search is still fast enough offline.
+    # Allow the duplicate runtime (also set in recsys/__init__) and keep faiss
+    # single-threaded; per-query latency is unaffected.
     os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 try:

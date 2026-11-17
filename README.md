@@ -33,6 +33,8 @@ python -m recsys.train.train_ranker      # -> reports/ranking.md, artifacts/rank
 pytest                              # runs on synthetic data, no downloads
 ```
 
+On macOS, LightGBM needs the OpenMP runtime: `conda install -c conda-forge llvm-openmp` (or `brew install libomp`).
+
 Set `OPENBLAS_NUM_THREADS=1` before training ALS; `implicit` runs much slower with OpenBLAS threading.
 
 ## Data pipeline (Phase 0)
