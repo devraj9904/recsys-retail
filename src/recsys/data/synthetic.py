@@ -85,7 +85,8 @@ def generate(
                         t += 60_000
                         events.append((t, v, "transaction", int(item), txn))
                         txn += 1
-    ev = pd.DataFrame(events, columns=["timestamp", "visitorid", "event", "itemid", "transactionid"])
+    cols = ["timestamp", "visitorid", "event", "itemid", "transactionid"]
+    ev = pd.DataFrame(events, columns=cols)
     ev["transactionid"] = ev["transactionid"].astype("Int64")
     ev.to_csv(out / "events.csv", index=False)
     return out
