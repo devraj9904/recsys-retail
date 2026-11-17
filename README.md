@@ -9,7 +9,7 @@ Structure is inspired by [realtime-recsys](https://github.com/mohamed-abo-taha/r
 | Phase | Deliverable | Status |
 |---|---|---|
 | 0 | Data pipeline: cleaning, sessionization, temporal split, item metadata ([stats](reports/data_stats.md)) | ✅ |
-| 1 | Retrieval: two-tower + FAISS vs ALS and popularity baselines | ⏳ |
+| 1 | Retrieval: two-tower + FAISS vs ALS and popularity baselines ([results](reports/retrieval.md)) | ✅ |
 | 2 | Ranking: multi-objective LambdaRank, NDCG@K / Recall@K, diversity reranking | ⏳ |
 | 3 | Real-time features: Kafka ingestion, Redis online store, live preference updates | ⏳ |
 | 4 | Cold start: content features for new users and items vs CF | ⏳ |
@@ -28,8 +28,11 @@ python -m recsys.data.synthetic --out data/retailrocket/raw
 
 python -m recsys.data.prepare       # -> data/retailrocket/processed/*.parquet
 python -m recsys.data.report        # -> reports/data_stats.md
+python -m recsys.train.train_retrieval   # -> reports/retrieval.md, artifacts/retrieval/
 pytest                              # runs on synthetic data, no downloads
 ```
+
+Set `OPENBLAS_NUM_THREADS=1` before training ALS; `implicit` runs much slower with OpenBLAS threading.
 
 ## Data pipeline (Phase 0)
 
@@ -45,12 +48,44 @@ Event types carry graded relevance (`view=1`, `addtocart=2`, `transaction=3`), u
 
 The loader returns normalised frames (`ts`, `visitor_id`, `item_id`, `event`), so another dataset such as Coveo SIGIR-21 only needs a new loader.
 
+## Retrieval (Phase 1)
+
+All models learn from the train split only. At test time each visitor is represented by their latest pre-test history (train + tune), and the targets are the distinct items they touch in the 14-day test window. Items outside the warm catalogue count as misses.
+
+| model | recall@20 | recall@100 | NDCG@20 | discovery recall@100 | purchase recall@100 |
+|---|---|---|---|---|---|
+| popularity (all-time) | 0.008 | 0.028 | 0.004 | 0.025 | 0.066 |
+| popularity (last 7 days) | 0.012 | 0.041 | 0.006 | 0.040 | 0.086 |
+| recently viewed + trending | 0.180 | 0.202 | 0.167 | 0.040 | **0.323** |
+| ALS (64 factors) | 0.080 | 0.126 | 0.049 | 0.076 | 0.235 |
+| **two-tower + FAISS HNSW** | **0.202** | **0.242** | **0.171** | **0.112** | 0.292 |
+
+14,333 test visitors with history, 148k warm items. *Discovery* drops items the visitor already saw from both the ranking and the targets, which measures whether a model finds new products rather than echoing history.
+
+What the numbers say:
+
+- **Two-tower is the best retriever overall**: 2.5x ALS on recall@20, and 1.5x ALS on discovery recall@100.
+- **Re-engagement is a big share of e-commerce traffic.** Simply echoing a visitor's own recent items gets recall@20 of 0.18 and the best purchase recall, because people buy what they viewed. The ranker in Phase 2 will merge both candidate sources rather than pick one.
+- **Popularity is weak here** because the catalogue is long-tailed (148k items) and covers only 0.07% of it.
+- **HNSW matches exact search** (recall within 0.001) at about 0.19 ms p50 / 0.32 ms p99 per single query, 6.5x faster than flat search in batch.
+
+Model details:
+
+- **Two-tower** (`models/two_tower.py`): the item tower combines item-id, leaf-category, top-category, price-bucket and availability embeddings through an MLP. The user tower attention-pools the visitor's last 30 items (weighted by event type and recency) and adds the most recent item. There is no user-id embedding, so any visitor with at least one event can be encoded without retraining, which Phase 3 uses for live updates. It is trained on 741k next-item examples with in-batch softmax and logQ correction for popularity bias, which takes about 5 minutes on 4 CPU cores.
+- **ALS** (`models/als.py`): `implicit` ALS with confidence 1 + 10 x (summed event weights). User factors are re-solved from each visitor's pre-test history, so it sees the same information as the two-tower.
+- **FAISS** (`index/ann.py`): exact `IndexFlatIP` or `IndexHNSWFlat` over L2-normalised item vectors, with a numpy fallback.
+
 ## Layout
 
 ```
 src/recsys/
   config.py        paths, event weights, PrepareConfig
   data/            download, loaders, prepare, synthetic, report
+  retrieval/       history streams, training examples, eval set
+  models/          popularity, ALS, two-tower
+  index/           FAISS item index
+  eval/            Recall@K, NDCG@K, hit rate, coverage
+  train/           train_retrieval (trains and compares all retrievers)
 tests/             unit + end-to-end tests on synthetic data
 reports/           generated metric tables
 ```
