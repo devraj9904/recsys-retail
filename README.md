@@ -8,7 +8,7 @@ Structure is inspired by [realtime-recsys](https://github.com/mohamed-abo-taha/r
 
 | Phase | Deliverable | Status |
 |---|---|---|
-| 0 | Data pipeline: cleaning, sessionization, temporal split, item metadata | ✅ |
+| 0 | Data pipeline: cleaning, sessionization, temporal split, item metadata ([stats](reports/data_stats.md)) | ✅ |
 | 1 | Retrieval: two-tower + FAISS vs ALS and popularity baselines | ⏳ |
 | 2 | Ranking: multi-objective LambdaRank, NDCG@K / Recall@K, diversity reranking | ⏳ |
 | 3 | Real-time features: Kafka ingestion, Redis online store, live preference updates | ⏳ |
