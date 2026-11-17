@@ -12,7 +12,7 @@ A real-time, two-stage e-commerce recommender on the [RetailRocket](https://www.
 | 1 | Retrieval: two-tower + FAISS vs ALS and popularity baselines ([results](reports/retrieval.md)) | ✅ |
 | 2 | Ranking: multi-objective LambdaRank, NDCG@K / Recall@K, diversity reranking ([results](reports/ranking.md)) | ✅ |
 | 3 | Real-time features: Kafka ingestion, Redis online store, live preference updates ([results](reports/streaming.md)) | ✅ |
-| 4 | Cold start: content features for new users and items vs CF | ⏳ |
+| 4 | Cold start: content features for new users and items vs CF ([results](reports/coldstart.md)) | ✅ |
 | 5 | Serving: FastAPI, Docker, Redis cache, load tests, Prometheus/Grafana | ⏳ |
 
 ## Quickstart
@@ -32,6 +32,7 @@ python -m recsys.train.train_retrieval   # -> reports/retrieval.md, artifacts/re
 python -m recsys.train.train_ranker      # -> reports/ranking.md, artifacts/ranking/
 docker compose up -d                     # Kafka :9092 + Redis :6379
 python -m recsys.train.run_streaming     # -> reports/streaming.md, artifacts/streaming/
+python -m recsys.train.run_coldstart     # -> reports/coldstart.md, artifacts/coldstart/
 pytest                              # runs on synthetic data, no downloads
 ```
 
@@ -151,6 +152,37 @@ Freshness is measured per event, from the producer's send to the moment the visi
 
 Live updates nearly double next-event Hit@20 (+86%), and more than double it for items the visitor had not touched recently (+136%). Details and caveats are in [reports/streaming.md](reports/streaming.md).
 
+## Cold start (Phase 4)
+
+Cold start is the norm on RetailRocket, not an edge case: **88% of test-window visitors have no history**, and **12% of test clicks are on items the models never trained on** (85,502 new items).
+
+- **Catalogue** (`coldstart/catalog.py`): one id space where warm items keep their Phase 1 ids and new items are appended, so content and CF methods can be compared on the same targets.
+- **Content representations** (`coldstart/content.py`): from category path, price bucket, availability and hashed property values.
+  - a TF-IDF vector, which is purely content
+  - a content encoder trained on warm items to reproduce each item's two-tower vector from metadata alone. The user tower can then score a brand-new item.
+- **Methods for a visitor known only by a few clicks** (`coldstart/methods.py`):
+  - content: popular in the clicked categories, TF-IDF item kNN
+  - CF: popularity, co-view ("also viewed in the same session"), ALS fold-in, the two-tower user tower
+  - hybrids of the two
+
+**New visitors, from their first click** (20,715 visitors; predict the distinct items they click afterwards):
+
+| method | Recall@20 | NDCG@20 | first click on a warm item | first click on a new item |
+|---|---|---|---|---|
+| popularity | 0.012 | 0.005 | 0.014 | 0.003 |
+| content: TF-IDF item kNN | 0.255 | 0.138 | 0.253 | **0.270** |
+| CF: co-view | 0.266 | 0.158 | 0.293 | 0.038 |
+| CF: two-tower user tower | 0.319 | 0.188 | **0.356** | 0.003 |
+| **hybrid: two-tower, or TF-IDF if the click is a new item** | **0.347** | **0.204** | **0.356** | **0.270** |
+
+- CF wins when the click is on a known item. Content is the only thing that works when it isn't: CF recall drops to almost zero there, and TF-IDF holds at 0.27.
+- Routing between them beats either alone: +9% over the two-tower and 28× popularity.
+- The two-tower model has no user-id embedding, so it serves a brand-new visitor from a single click without retraining.
+
+**Content vs CF on the same items.** 10% of warm items were hidden from the content encoder. Retrieving them with metadata-only vectors gives Recall@20 0.118, against 0.209 with their click-learned vectors, so content alone recovers 57% of CF quality. A category-centroid vector gets only 0.055.
+
+**Genuinely new items.** Putting content vectors for the 85,502 new items into the same index lets them fill 21% of slots, and finds 3.0% of new-item clicks, which Phase 1 missed entirely. The cost is a 1.4% drop in overall Recall@20 (0.202 to 0.199). Ranking only among new items, TF-IDF kNN from a visitor's last 5 items reaches Recall@20 0.073, against 0.0002 for random. Full tables and caveats are in [reports/coldstart.md](reports/coldstart.md).
+
 ## Layout
 
 ```
@@ -162,9 +194,10 @@ src/recsys/
   index/           FAISS item index
   eval/            Recall@K, NDCG@K, hit rate, coverage
   ranking/         candidates, features, LambdaRank + conversion models, MMR diversity
+  coldstart/       catalogue ids, content features + encoder, cold-start recommenders
   features/        Redis online feature store
   streaming/       event schema, Kafka producer/consumer, live recommender, stale-vs-live eval
-  train/           train_retrieval, train_ranker, run_streaming
+  train/           train_retrieval, train_ranker, run_streaming, run_coldstart
 tests/             unit + end-to-end tests on synthetic data
 reports/           generated metric tables
 ```
