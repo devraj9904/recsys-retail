@@ -25,8 +25,7 @@ def render(stats: dict, title: str = "Dataset summary") -> str:
         f"{stats['items_with_price']:,} |",
         *(f"| {k} events | {v:,} ({v / total:.1%}) |" for k, v in mix.items()),
         f"| visitors with a single event | {stats['single_event_visitor_share']:.1%} |",
-        f"| warm users / warm items (train) | {stats['warm_users']:,} / "
-        f"{stats['warm_items']:,} |",
+        f"| warm users / warm items (train) | {stats['warm_users']:,} / {stats['warm_items']:,} |",
         f"| test events from new visitors | {stats['test_new_visitor_share']:.1%} |",
         f"| test events on cold items | {stats['test_cold_item_share']:.1%} |",
         "",

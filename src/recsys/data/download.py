@@ -1,7 +1,7 @@
 """Fetch RetailRocket from Kaggle, or unpack a zip you downloaded by hand.
 
-    python -m recsys.data.download                 # needs KAGGLE_USERNAME/KAGGLE_KEY
-    python -m recsys.data.download --zip ~/Downloads/archive.zip
+python -m recsys.data.download                 # needs KAGGLE_USERNAME/KAGGLE_KEY
+python -m recsys.data.download --zip ~/Downloads/archive.zip
 """
 
 from __future__ import annotations
