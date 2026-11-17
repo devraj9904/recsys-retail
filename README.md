@@ -33,7 +33,14 @@ python -m recsys.train.train_ranker      # -> reports/ranking.md, artifacts/rank
 pytest                              # runs on synthetic data, no downloads
 ```
 
-On macOS, LightGBM needs the OpenMP runtime: `conda install -c conda-forge llvm-openmp` (or `brew install libomp`).
+**macOS (Apple silicon):** install PyTorch, FAISS and LightGBM from conda-forge so they share one OpenMP runtime. The pip wheels each bundle their own, and mixing them crashes with a segfault.
+
+```bash
+conda create -n recsys -c conda-forge python=3.12 pytorch faiss-cpu lightgbm -y
+conda activate recsys
+pip install -e ".[dev]" --no-deps
+pip install implicit scikit-learn pyarrow pandas scipy pytest ruff
+```
 
 Set `OPENBLAS_NUM_THREADS=1` before training ALS; `implicit` runs much slower with OpenBLAS threading.
 
