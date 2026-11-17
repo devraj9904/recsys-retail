@@ -134,11 +134,7 @@ def build_items(raw: RawData, item_ids: pd.Index) -> pd.DataFrame:
     items["price"] = single(PRICE_PROPERTY).map(_parse_numeric).astype("float64")
 
     other = latest[~prop.isin(META_PROPERTIES)]
-    tokens = (
-        other["property"].astype(str)
-        + ":"
-        + other["value"].fillna("").str.split(" ").str[0]
-    )
+    tokens = other["property"].astype(str) + ":" + other["value"].fillna("").str.split(" ").str[0]
     hashed = other["value"].fillna("").str.split(" ").str[0]
     tokens = tokens[~hashed.str.startswith("n")]  # keep categorical/hashed values only
     items["tokens"] = (
@@ -187,10 +183,7 @@ def summarize(events: pd.DataFrame, items: pd.DataFrame, user_map, item_map) -> 
             "sessions": int(part["session_id"].nunique()),
             "start": str(part["ts"].min()),
             "end": str(part["ts"].max()),
-            **{
-                f"n_{e}": int(n)
-                for e, n in part["event"].value_counts().items()
-            },
+            **{f"n_{e}": int(n) for e, n in part["event"].value_counts().items()},
         }
     events_per_visitor = events.groupby("visitor_id").size()
     return {

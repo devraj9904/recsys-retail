@@ -10,7 +10,7 @@ Structure is inspired by [realtime-recsys](https://github.com/mohamed-abo-taha/r
 |---|---|---|
 | 0 | Data pipeline: cleaning, sessionization, temporal split, item metadata ([stats](reports/data_stats.md)) | ✅ |
 | 1 | Retrieval: two-tower + FAISS vs ALS and popularity baselines ([results](reports/retrieval.md)) | ✅ |
-| 2 | Ranking: multi-objective LambdaRank, NDCG@K / Recall@K, diversity reranking | ⏳ |
+| 2 | Ranking: multi-objective LambdaRank, NDCG@K / Recall@K, diversity reranking ([results](reports/ranking.md)) | ✅ |
 | 3 | Real-time features: Kafka ingestion, Redis online store, live preference updates | ⏳ |
 | 4 | Cold start: content features for new users and items vs CF | ⏳ |
 | 5 | Serving: FastAPI, Docker, Redis cache, load tests, Prometheus/Grafana | ⏳ |
@@ -29,6 +29,7 @@ python -m recsys.data.synthetic --out data/retailrocket/raw
 python -m recsys.data.prepare       # -> data/retailrocket/processed/*.parquet
 python -m recsys.data.report        # -> reports/data_stats.md
 python -m recsys.train.train_retrieval   # -> reports/retrieval.md, artifacts/retrieval/
+python -m recsys.train.train_ranker      # -> reports/ranking.md, artifacts/ranking/
 pytest                              # runs on synthetic data, no downloads
 ```
 
@@ -75,6 +76,37 @@ Model details:
 - **ALS** (`models/als.py`): `implicit` ALS with confidence 1 + 10 x (summed event weights). User factors are re-solved from each visitor's pre-test history, so it sees the same information as the two-tower.
 - **FAISS** (`index/ann.py`): exact `IndexFlatIP` or `IndexHNSWFlat` over L2-normalised item vectors, with a numpy fallback.
 
+## Ranking (Phase 2)
+
+Two-stage: retrieval proposes about 120 candidates per visitor, and a LightGBM ranker orders them.
+
+- **Candidates** (`ranking/candidates.py`): two-tower + FAISS top-100, plus the visitor's own recent items, plus the 20 items trending in the week before the cutoff. Every candidate carries its two-tower score.
+- **Features** (`ranking/features.py`), 24 in total, all computed strictly before the cutoff:
+  - retrieval scores and ranks
+  - user-item history: count, strongest event, hours since
+  - item popularity (all-time and 7-day), cart rate and buy rate
+  - user activity
+  - category affinity (share of the visitor's events in the item's leaf and top category)
+  - price bucket and gap to the visitor's usual price
+  - availability
+- **Training**: rows are built at the start of the tune week from train-only history, and labelled with each visitor's strongest tune-week event (view=1, cart=2, purchase=3).
+- **Models** (`ranking/ranker.py`): LambdaRank on the graded labels (label gains 0/1/3/7), plus a conversion classifier (add-to-cart or purchase, with purchases weighted 3x). They are blended per visitor on standardised scores: `(1 - w) * z(engagement) + w * z(logit p_conversion)`.
+- **Diversity** (`ranking/diversity.py`): MMR reranking over the top 50, using two-tower item embeddings as the similarity space.
+
+Evaluated on 14,333 test visitors over the same 14-day window as Phase 1:
+
+| ranking | NDCG@10 | NDCG@20 | recall@20 | purchase recall@20 | categories in top 20 |
+|---|---|---|---|---|---|
+| recently viewed + trending | 0.166 | 0.167 | 0.180 | 0.278 | 12.8 |
+| two-tower order (Phase 1) | 0.167 | 0.171 | 0.202 | 0.237 | 3.6 |
+| **LambdaRank** | **0.180** | **0.184** | **0.217** | 0.298 | 5.5 |
+| LambdaRank + conversion (w=0.2) | 0.176 | 0.180 | 0.216 | 0.297 | 5.5 |
+| **+ MMR λ=0.2** (serving default) | 0.175 | 0.180 | 0.215 | **0.302** | 6.9 |
+
+- LambdaRank improves NDCG@20 by 8% and purchase recall by 26% over the two-tower order, and reaches 85% of the candidate-set ceiling (recall@20 0.254).
+- History features dominate the learned ranking: `hist_pos` and `ui_events` carry about 72% of the gain. The two-tower score decides among items the visitor has not seen.
+- MMR λ=0.2 adds 1.4 categories per list (+26%) for a 2.4% NDCG cost. Full trade-off curve in [reports/ranking.md](reports/ranking.md).
+
 ## Layout
 
 ```
@@ -85,7 +117,8 @@ src/recsys/
   models/          popularity, ALS, two-tower
   index/           FAISS item index
   eval/            Recall@K, NDCG@K, hit rate, coverage
-  train/           train_retrieval (trains and compares all retrievers)
+  ranking/         candidates, features, LambdaRank + conversion models, MMR diversity
+  train/           train_retrieval, train_ranker
 tests/             unit + end-to-end tests on synthetic data
 reports/           generated metric tables
 ```

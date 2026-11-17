@@ -36,9 +36,9 @@ def generate(
     tree = [(t, None) for t in range(n_top)] + [
         (leaf, t) for t, ls in leaves.items() for leaf in ls
     ]
-    pd.DataFrame(tree, columns=["categoryid", "parentid"]).astype(
-        {"parentid": "Int64"}
-    ).to_csv(out / "category_tree.csv", index=False)
+    pd.DataFrame(tree, columns=["categoryid", "parentid"]).astype({"parentid": "Int64"}).to_csv(
+        out / "category_tree.csv", index=False
+    )
 
     item_top = rng.integers(0, n_top, n_items)
     item_leaf = np.array([rng.choice(leaves[t]) for t in item_top])
