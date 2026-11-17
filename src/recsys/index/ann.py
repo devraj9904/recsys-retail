@@ -7,10 +7,23 @@ L2-normalised vectors, so inner product equals cosine similarity.
 
 from __future__ import annotations
 
+import os
+import sys
+
 import numpy as np
+
+if sys.platform == "darwin":
+    # On macOS, PyTorch and faiss-cpu each bundle their own libomp. Two OpenMP
+    # runtimes in one process crash inside faiss search (segfault / abort).
+    # Allow the duplicate runtime and keep faiss single-threaded; per-query
+    # latency is unaffected and batch search is still fast enough offline.
+    os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 try:
     import faiss
+
+    if sys.platform == "darwin":
+        faiss.omp_set_num_threads(1)
 except ImportError:  # pragma: no cover - exercised only without faiss installed
     faiss = None
 
