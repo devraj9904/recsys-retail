@@ -2,7 +2,7 @@
 
 A real-time, two-stage e-commerce recommender on the [RetailRocket](https://www.kaggle.com/datasets/retailrocket/ecommerce-dataset) dataset: two-tower retrieval with FAISS, LightGBM LambdaRank ranking for clicks and purchases, Kafka → Redis streaming features, content-based cold start, and a FastAPI serving stack with Prometheus/Grafana.
 
-Structure is inspired by [realtime-recsys](https://github.com/mohamed-abo-taha/realtime-recsys) and rebuilt for implicit e-commerce events (views, add-to-carts, purchases) instead of explicit ratings.
+
 
 ## Build phases
 
