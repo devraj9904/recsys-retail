@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>recsys-retail demo</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e4e4e0;
+    --accent: #2f6fed; --accent-ink: #ffffff; --new: #e8f5e9; --new-ink: #1b5e20;
+    --hist: #fff4e0; --tt: #e8efff; --trend: #f1e8ff; --content: #e6f6f4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141416; --panel: #1d1d20; --ink: #ececef; --muted: #9a9aa2; --line: #2c2c31;
+      --accent: #6d9bff; --accent-ink: #0b0b0c; --new: #183a1d; --new-ink: #a5d6a7;
+      --hist: #3a2e14; --tt: #1c2742; --trend: #2c1f40; --content: #143331;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         background: var(--bg); color: var(--ink); }
+  header { padding: 16px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  main { display: grid; grid-template-columns: 340px 1fr; gap: 16px; padding: 16px 20px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; padding: 12px 16px; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+            padding: 14px; min-width: 0; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+       margin: 0 0 10px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  select, input, button { font: inherit; color: inherit; background: var(--bg);
+                          border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+  input { width: 130px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; color: var(--muted); }
+  .kv b { color: var(--ink); font-weight: 600; }
+  ol.hist { list-style: none; padding: 0; margin: 8px 0 0; max-height: 360px; overflow: auto; }
+  ol.hist li { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0;
+               border-top: 1px solid var(--line); }
+  .tag { font-size: 11px; padding: 1px 6px; border-radius: 99px; background: var(--bg);
+         border: 1px solid var(--line); white-space: nowrap; }
+  .meta { color: var(--muted); font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px; position: relative; }
+  .card.is-new { background: var(--new); }
+  .card .new { position: absolute; top: 8px; right: 8px; font-size: 11px; color: var(--new-ink);
+               font-weight: 600; }
+  .card h3 { margin: 0 0 4px; font-size: 14px; }
+  .src-history { background: var(--hist); } .src-two-tower { background: var(--tt); }
+  .src-trending { background: var(--trend); } .src-content { background: var(--content); }
+  .actions { display: flex; gap: 4px; margin-top: 8px; }
+  .actions button { flex: 1; padding: 4px; font-size: 12px; }
+  .status { color: var(--muted); font-size: 12px; min-height: 18px; }
+  code { font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>recsys-retail</h1>
+  <p>Pick a visitor, see what they did and what the system recommends. Click an action on any
+     item to send an event, and watch the recommendations update.</p>
+</header>
+<main>
+  <section>
+    <h2>Visitor</h2>
+    <div class="row">
+      <select id="demo" aria-label="Demo visitors"></select>
+      <button id="newv" title="A visitor with no history">New visitor</button>
+    </div>
+    <div class="row">
+      <input id="vid" type="number" min="0" placeholder="visitor id" aria-label="Visitor id">
+      <button class="primary" id="load">Load</button>
+    </div>
+    <div class="kv" id="vstats"></div>
+    <h2 style="margin-top:14px">Recent activity</h2>
+    <ol class="hist" id="hist"></ol>
+  </section>
+  <section>
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Recommendations</h2>
+      <span class="status" id="status"></span>
+    </div>
+    <div class="grid" id="recs"></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let visitor = null, previous = new Set();
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json();
+}
+const fmtPrice = (p) => p == null ? "price n/a" : `price ${Math.round(p).toLocaleString()}`;
+const fmtCat = (c) => c == null ? "category n/a" : `category ${c}`;
+const evName = {1: "view", 2: "add to cart", 3: "purchase"};
+
+async function loadVisitor(v, keepPrev) {
+  visitor = v; $("vid").value = v;
+  if (!keepPrev) previous = new Set();
+  const [info, recs] = await Promise.all([api(`/visitors/${v}`), api(`/recommend/${v}?k=12`)]);
+  const s = info.stats, ss = info.session;
+  $("vstats").innerHTML = `
+    <span>visitor</span><b>${v}</b>
+    <span>events</span><b>${s.events ?? 0}</b>
+    <span>purchases</span><b>${s.transaction ?? 0}</b>
+    <span>session</span><b>${ss.session_id ? `#${ss.session_id}, ${ss.session_events} events` : "none"}</b>
+    <span>user vector</span><b>${info.has_vector ? "yes" : "no (cold start)"}</b>`;
+  $("hist").innerHTML = info.recent.length ? info.recent.map((e) => `
+    <li><span>${evName[e.weight]} <b>${e.item_id}</b>
+      <span class="meta">${fmtCat(e.category)}</span></span>
+      <span class="tag">${e.warm ? "known item" : "new item"}</span></li>`).join("")
+    : `<li class="meta">No activity yet.</li>`;
+  const t = recs.timings_ms || {};
+  $("status").textContent = `route: ${recs.route} · ${recs.cached ? "cached" :
+      `${(t.total ?? 0).toFixed(1)} ms`}`;
+  $("recs").innerHTML = recs.items.map((it) => {
+    const isNew = previous.size && !previous.has(it.item_id);
+    return `<div class="card ${isNew ? "is-new" : ""}">
+      ${isNew ? `<span class="new">new</span>` : ""}
+      <h3>item ${it.item_id}</h3>
+      <div class="meta">${fmtCat(it.category)} · ${fmtPrice(it.price)}</div>
+      <div class="row" style="margin:6px 0 0">
+        <span class="tag src-${it.source}">${it.source}</span>
+        ${it.p_conversion != null ? `<span class="tag">p(cart/buy) ${it.p_conversion.toFixed(3)}</span>` : ""}
+      </div>
+      <div class="actions">
+        <button data-item="${it.item_id}" data-ev="view">View</button>
+        <button data-item="${it.item_id}" data-ev="addtocart">Cart</button>
+        <button data-item="${it.item_id}" data-ev="transaction">Buy</button>
+      </div></div>`;
+  }).join("");
+  previous = new Set(recs.items.map((i) => i.item_id));
+}
+
+$("recs").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-item]");
+  if (!b || visitor == null) return;
+  $("status").textContent = "sending event…";
+  await api("/events", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({visitor_id: visitor, item_id: +b.dataset.item, event: b.dataset.ev})});
+  setTimeout(() => loadVisitor(visitor, true), 150);
+});
+$("load").onclick = () => $("vid").value && loadVisitor(+$("vid").value);
+$("demo").onchange = () => loadVisitor(+$("demo").value);
+$("newv").onclick = () => loadVisitor(900000000 + Math.floor(Math.random() * 1e6));
+
+api("/demo/visitors").then(({visitors}) => {
+  $("demo").innerHTML = visitors.map((v) => `<option value="${v}">visitor ${v}</option>`).join("");
+  if (visitors.length) loadVisitor(visitors[0]);
+}).catch((e) => { $("status").textContent = e.message; });
+</script>
+</body>
+</html>

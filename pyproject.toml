@@ -19,14 +19,21 @@ dependencies = [
     "scikit-learn>=1.3",
     "redis>=5",
     "confluent-kafka>=2.4",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "prometheus-client>=0.20",
 ]
 
 [project.optional-dependencies]
 download = ["kaggle>=1.6"]
-dev = ["pytest>=8", "ruff>=0.4", "fakeredis[lua]>=2.23"]
+dev = ["pytest>=8", "ruff>=0.4", "fakeredis[lua]>=2.23", "httpx>=0.27"]
+load = ["locust>=2.20", "httpx>=0.27"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+recsys = ["serving/static/*.html"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
