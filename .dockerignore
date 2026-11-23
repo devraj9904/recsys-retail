@@ -1,0 +1,9 @@
+.git
+data
+artifacts
+reports
+tests
+**/__pycache__
+*.egg-info
+.env
+kaggle.json

@@ -13,7 +13,7 @@ A real-time, two-stage e-commerce recommender on the [RetailRocket](https://www.
 | 2 | Ranking: multi-objective LambdaRank, NDCG@K / Recall@K, diversity reranking ([results](reports/ranking.md)) | ✅ |
 | 3 | Real-time features: Kafka ingestion, Redis online store, live preference updates ([results](reports/streaming.md)) | ✅ |
 | 4 | Cold start: content features for new users and items vs CF ([results](reports/coldstart.md)) | ✅ |
-| 5 | Serving: FastAPI, Docker, Redis cache, load tests, Prometheus/Grafana | ⏳ |
+| 5 | Serving: FastAPI, Docker, Redis cache, load tests, Prometheus/Grafana, demo page ([results](reports/serving.md)) | ✅ |
 
 ## Quickstart
 
@@ -30,9 +30,15 @@ python -m recsys.data.prepare       # -> data/retailrocket/processed/*.parquet
 python -m recsys.data.report        # -> reports/data_stats.md
 python -m recsys.train.train_retrieval   # -> reports/retrieval.md, artifacts/retrieval/
 python -m recsys.train.train_ranker      # -> reports/ranking.md, artifacts/ranking/
-docker compose up -d                     # Kafka :9092 + Redis :6379
+docker compose --profile streaming up -d redis kafka   # Kafka :9092 + Redis :6379
 python -m recsys.train.run_streaming     # -> reports/streaming.md, artifacts/streaming/
 python -m recsys.train.run_coldstart     # -> reports/coldstart.md, artifacts/coldstart/
+
+# Serve (Phase 5)
+python -m recsys.serving.bundle          # -> artifacts/serving/
+python -m recsys.serving.warm --flush    # load returning visitors into Redis
+uvicorn recsys.serving.app:app --port 8000 --workers 4   # demo page at http://localhost:8000
+python -m recsys.train.run_serving       # load test -> reports/serving.md
 pytest                              # runs on synthetic data, no downloads
 ```
 
@@ -42,7 +48,7 @@ pytest                              # runs on synthetic data, no downloads
 conda create -n recsys -c conda-forge python=3.12 pytorch faiss-cpu lightgbm -y
 conda activate recsys
 pip install -e ".[dev]" --no-deps
-pip install implicit scikit-learn pyarrow pandas scipy redis confluent-kafka "fakeredis[lua]" pytest ruff
+pip install implicit scikit-learn pyarrow pandas scipy redis confluent-kafka fastapi "uvicorn[standard]" prometheus-client httpx "fakeredis[lua]" pytest ruff
 ```
 
 Set `OPENBLAS_NUM_THREADS=1` before training ALS; `implicit` runs much slower with OpenBLAS threading.
@@ -183,6 +189,46 @@ Cold start is the norm on RetailRocket, not an edge case: **88% of test-window v
 
 **Genuinely new items.** Putting content vectors for the 85,502 new items into the same index lets them fill 21% of slots, and finds 3.0% of new-item clicks, which Phase 1 missed entirely. The cost is a 1.4% drop in overall Recall@20 (0.202 to 0.199). Ranking only among new items, TF-IDF kNN from a visitor's last 5 items reaches Recall@20 0.073, against 0.0002 for random. Full tables and caveats are in [reports/coldstart.md](reports/coldstart.md).
 
+## Serving (Phase 5)
+
+```
+GET /recommend/{visitor}
+   │  Redis response cache ── hit ──▶ return
+   ▼  miss
+   ├─ has a user vector ──▶ HNSW top-100 + own recent items + trending   (~120 candidates)
+   │                        ▶ 24 online features ▶ LambdaRank + conversion blend ▶ MMR ▶ top k
+   ├─ clicked only new items ──▶ TF-IDF content kNN over all 233k items
+   └─ no events ──▶ trending
+POST /events ──▶ Redis online store (or Kafka ▶ consumer) ──▶ user vector re-encoded, cache dropped
+```
+
+- **API** (`serving/app.py`, FastAPI): the endpoints are `/recommend`, `/events`, `/visitors/{id}`, `/items/{id}`, `/health` and `/metrics`, plus a demo page at `/`.
+  - Handlers are async: each request is a few milliseconds of CPU, so they run inline on the event loop, and the service scales out with uvicorn workers.
+  - The API keeps no state in process. Everything lives in Redis, so any number of workers or replicas can serve.
+- **Online features** (`serving/online_features.py`): the same 24 ranking features as offline, built with numpy from the Redis online store and a precomputed serving bundle (`serving/bundle.py`). A test checks they match the offline pandas features exactly on the same events.
+- **Cache**: responses are cached per visitor in Redis for 5 minutes, and the visitor's next event deletes the entry, so a cache hit is never older than their last click.
+- **Observability**: Prometheus histograms for request latency (by endpoint and status) and pipeline stage latency, and counters for route, cache hit or miss, and events. A Grafana dashboard is provisioned automatically (`docker/grafana`).
+- **Docker**: `Dockerfile` (CPU-only PyTorch) and `docker-compose.yml` with the API, Redis, Prometheus and Grafana. Kafka and the streaming consumer are behind `--profile streaming`, and a one-off `warm` job is behind `--profile tools`.
+
+Measured on the real catalogue (148k ranked items, 233k for content), 4 uvicorn workers on 4 vCPUs, with the load generator on the same machine:
+
+| clients | requests/s | p50 | p95 | p99 |
+|---|---|---|---|---|
+| 1 | 234 | 4.2 ms | 5.6 ms | 8.1 ms |
+| 4 | 523 | 7.4 ms | 10.8 ms | 14.2 ms |
+| 8 | 685 | 10.0 ms | 23.7 ms | 31.5 ms |
+
+The full ranked pipeline takes 2.4 ms server-side: retrieval 0.8 ms, features 0.5 ms, two LightGBM models 0.5 ms, MMR 0.2 ms. Beyond 8 clients the machine is CPU-bound. With the response cache on (57% hit rate), 8 clients reach 875 requests/s at p95 18.8 ms. Full tables are in [reports/serving.md](reports/serving.md).
+
+**Demo page.** Open `http://localhost:8000`, pick a visitor, and click View, Cart or Buy on any item. The event goes to the online store, the visitor's vector is re-encoded, and the recommendations reload with new items highlighted. "New visitor" shows the cold-start path: trending first, then content or ranked recommendations after the first click.
+
+**Running the full stack with Docker** (after training, `python -m recsys.serving.bundle`, with `./data` and `./artifacts` in place):
+
+```bash
+docker compose up -d --build                 # API :8000, Redis, Prometheus :9090, Grafana :3000
+docker compose --profile tools run --rm warm # load returning visitors into Redis
+```
+
 ## Layout
 
 ```
@@ -196,8 +242,11 @@ src/recsys/
   ranking/         candidates, features, LambdaRank + conversion models, MMR diversity
   coldstart/       catalogue ids, content features + encoder, cold-start recommenders
   features/        Redis online feature store
+  serving/         FastAPI app, serving bundle, online features, recommender, load test, demo page
   streaming/       event schema, Kafka producer/consumer, live recommender, stale-vs-live eval
-  train/           train_retrieval, train_ranker, run_streaming, run_coldstart
+  train/           train_retrieval, train_ranker, run_streaming, run_coldstart, run_serving
 tests/             unit + end-to-end tests on synthetic data
+docker/            Prometheus config, Grafana datasource + dashboard
+loadtest/          Locust file for interactive load testing
 reports/           generated metric tables
 ```

@@ -31,7 +31,9 @@ class LiveRecommender:
         self.item_ids = item_ids  # item_idx -> item_id
 
     @classmethod
-    def from_artifacts(cls, client, processed: Path, retrieval: Path, history_len: int = 30):
+    def from_artifacts(
+        cls, client, processed: Path, retrieval: Path, history_len: int = 30, index: str = "flat"
+    ):
         item_map = pd.read_parquet(processed / "item_map.parquet")
         items = pd.read_parquet(processed / "items.parquet")
         feats = build_item_features(items, item_map)
@@ -42,7 +44,7 @@ class LiveRecommender:
         idx = dict(zip(item_map["item_id"].to_numpy().tolist(),
                        item_map["item_idx"].to_numpy().tolist(), strict=True))  # fmt: skip
         store = OnlineStore(client, idx, feats.leaf, history_len=history_len)
-        return cls(store, model, ItemIndex(vecs, kind="flat"), item_map["item_id"].to_numpy())
+        return cls(store, model, ItemIndex(vecs, kind=index), item_map["item_id"].to_numpy())
 
     @torch.no_grad()
     def refresh_vectors(self, visitors: list[int]) -> np.ndarray:

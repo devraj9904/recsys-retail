@@ -8,7 +8,9 @@ Keys (per visitor ``v`` and item ``i``)::
     u:{v}:cat      HASH  leaf category -> time-decayed affinity, plus "_ts"
     u:{v}:vec      STRING float32 user embedding (two-tower user tower)
     i:{i}:stats    HASH  view, addtocart, transaction
-    trending       ZSET  item_id -> time-decayed event weight
+    trending       ZSET  item_id -> summed event weight
+    clock          STRING latest event time seen (data clock for serving)
+    rec:{v}        HASH  cached recommendation responses, dropped on every event
 
 Session and affinity updates depend on the previous state, so they run as
 one Lua script per event: atomic, one round trip, and safe with several
@@ -58,6 +60,12 @@ end
 return 1
 """
 
+_MAX_CLOCK = """
+local cur = tonumber(redis.call('GET', KEYS[1]) or '-1')
+if tonumber(ARGV[1]) > cur then redis.call('SET', KEYS[1], ARGV[1]) end
+return 1
+"""
+
 
 class OnlineStore:
     def __init__(
@@ -80,6 +88,7 @@ class OnlineStore:
         self.session_gap_s = session_gap_s
         self.tau = affinity_half_life_days * 86400 / math.log(2)
         self._script = self.r.register_script(_SESSION_AND_AFFINITY)
+        self._clock = self.r.register_script(_MAX_CLOCK)
 
     def _leaf(self, item_id: int) -> int:
         idx = self.item_idx.get(item_id)
@@ -99,13 +108,20 @@ class OnlineStore:
             pipe.hset(f"u:{v}:stats", "last_ts", e.ts)
             pipe.hincrby(f"i:{e.item_id}:stats", e.event, 1)
             pipe.zincrby("trending", w, e.item_id)
+            pipe.delete(f"rec:{v}")  # cached recommendations are stale now
             self._script(
                 keys=[f"u:{v}:sess", f"u:{v}:cat"],
                 args=[e.ts, self.session_gap_s, self._leaf(e.item_id), w, self.tau],
                 client=pipe,
             )
+        if events:
+            self._clock(keys=["clock"], args=[max(e.ts for e in events)], client=pipe)
         pipe.execute()
         return touched
+
+    def clock(self) -> float | None:
+        raw = self.r.get("clock")
+        return None if raw is None else float(raw)
 
     # ------------------------------------------------------------------ reads
     def recent(self, visitor: int) -> list[tuple[int, int, float]]:

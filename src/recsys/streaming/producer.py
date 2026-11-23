@@ -23,7 +23,9 @@ from recsys.streaming.events import TOPIC, Event
 
 def iter_events(df: pd.DataFrame) -> Iterator[Event]:
     df = df.sort_values("ts", kind="stable")
-    ts = df["ts"].astype("int64").to_numpy() / 1e9
+    # Parquet round-trips can give datetime64[ms]; normalise the unit before
+    # converting, or the epoch seconds come out 1000x too small.
+    ts = df["ts"].astype("datetime64[ns]").astype("int64").to_numpy() / 1e9
     for t, v, i, e in zip(
         ts, df["visitor_id"].to_numpy(), df["item_id"].to_numpy(), df["event"].astype(str),
         strict=True,

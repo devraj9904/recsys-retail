@@ -194,3 +194,17 @@ def test_next_event_eval_shapes(small):
     assert cnt["events"] > 0 and cnt["new item events"] <= cnt["events"]
     for m in out.values():
         assert 0 <= m["hit@10"] <= 1 and m["mrr@10"] <= m["hit@10"]
+
+
+@pytest.mark.parametrize("unit", ["ns", "ms", "s"])
+def test_iter_events_epoch_seconds_any_unit(unit):
+    df = pd.DataFrame(
+        {
+            "ts": pd.to_datetime(["2015-09-04 00:00:01"]).astype(f"datetime64[{unit}]"),
+            "visitor_id": [1],
+            "item_id": [2],
+            "event": ["view"],
+        }
+    )
+    (e,) = list(iter_events(df))
+    assert e.ts == pytest.approx(1441324801.0)
