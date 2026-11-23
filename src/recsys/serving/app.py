@@ -64,8 +64,13 @@ def create_app(rec: Recommender, events_mode: str = "direct", producer=None) -> 
                 "events_mode": events_mode, "clock": rec.clock()}  # fmt: skip
 
     @app.get("/recommend/{visitor_id}")
-    async def recommend(visitor_id: int, k: int = Query(20, ge=1, le=100), nocache: bool = False):
-        r = rec.recommend(visitor_id, k, use_cache=not nocache)
+    async def recommend(
+        visitor_id: int,
+        k: int = Query(20, ge=1, le=100),
+        nocache: bool = False,
+        hide_purchased: bool = False,
+    ):
+        r = rec.recommend(visitor_id, k, use_cache=not nocache, hide_purchased=hide_purchased)
         m.recs.labels(r.route, "hit" if r.cached else "miss").inc()
         if not r.cached:
             for stage, ms in r.timings_ms.items():

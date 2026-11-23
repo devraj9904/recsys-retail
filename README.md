@@ -220,7 +220,12 @@ Measured on the real catalogue (148k ranked items, 233k for content), 4 uvicorn 
 
 The full ranked pipeline takes 2.4 ms server-side: retrieval 0.8 ms, features 0.5 ms, two LightGBM models 0.5 ms, MMR 0.2 ms. Beyond 8 clients the machine is CPU-bound. With the response cache on (57% hit rate), 8 clients reach 875 requests/s at p95 18.8 ms. Full tables are in [reports/serving.md](reports/serving.md).
 
-**Demo page.** Open `http://localhost:8000`, pick a visitor, and click View, Cart or Buy on any item. The event goes to the online store, the visitor's vector is re-encoded, and the recommendations reload with new items highlighted. "New visitor" shows the cold-start path: trending first, then content or ranked recommendations after the first click.
+**Demo page.** Open `http://localhost:8000` and pick a visitor. Each recommendation shows:
+- why it was picked ("You bought this", "Similar to item 74612", "Trending this week")
+- which source found it
+- purchase intent, when it is meaningful
+
+Above the list, a pipeline panel shows the candidate funnel (100 similar-taste + touched + trending → unique → ranked → diversified → shown) and the time spent in each stage. Clicking View, Cart or Buy sends an event and re-ranks the list, with the newly recommended items highlighted. "Hide items I bought" asks the API to drop purchased items (`hide_purchased=true`). "New visitor" shows the cold-start path: trending first, then personalised after one click. A "How it works" panel explains the pipeline in plain language.
 
 **Running the full stack with Docker** (after training, `python -m recsys.serving.bundle`, with `./data` and `./artifacts` in place):
 
