@@ -8,3 +8,6 @@ __pycache__/
 /artifacts/
 .env
 kaggle.json
+
+# Prometheus multiprocess metric files
+*.db
