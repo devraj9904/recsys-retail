@@ -23,9 +23,13 @@ import lightgbm as lgb
 import numpy as np
 
 from recsys.ranking.diversity import mmr
+from recsys.ranking.features import FEATURES
 from recsys.serving.bundle import Bundle
 from recsys.serving.online_features import visitor_features
 from recsys.streaming.live import LiveRecommender
+
+_UI_EVENTS = FEATURES.index("ui_events")
+_UI_MAX = FEATURES.index("ui_max_weight")
 
 
 def _z(x: np.ndarray) -> np.ndarray:
@@ -50,10 +54,17 @@ class Result:
     items: list[dict]
     timings_ms: dict[str, float] = field(default_factory=dict)
     cached: bool = False
+    pipeline: dict = field(default_factory=dict)  # candidate counts, for the demo / debugging
 
     def to_dict(self) -> dict:
-        return {"visitor_id": self.visitor_id, "route": self.route, "cached": self.cached,
-                "timings_ms": self.timings_ms, "items": self.items}  # fmt: skip
+        return {
+            "visitor_id": self.visitor_id,
+            "route": self.route,
+            "cached": self.cached,
+            "timings_ms": self.timings_ms,
+            "pipeline": self.pipeline,
+            "items": self.items,
+        }
 
 
 class Recommender:
@@ -85,9 +96,13 @@ class Recommender:
         return cls(Bundle.load(serving), live, ranker, buyer, cfg)
 
     # ----------------------------------------------------------------- public
-    def recommend(self, visitor: int, k: int = 20, use_cache: bool = True) -> Result:
+    def recommend(
+        self, visitor: int, k: int = 20, use_cache: bool = True, hide_purchased: bool = False
+    ) -> Result:
+        """Top-k items; ``hide_purchased`` drops items the visitor already bought."""
+        field_ = f"{k}:{int(hide_purchased)}"
         if use_cache:
-            raw = self.store.r.hget(f"rec:{visitor}", str(k))
+            raw = self.store.r.hget(f"rec:{visitor}", field_)
             if raw is not None:
                 r = Result(**json.loads(raw))
                 r.cached = True
@@ -96,9 +111,9 @@ class Recommender:
         recent = self.store.recent(visitor)  # newest first: (item_id, weight, ts)
         vec = self.store.user_vector(visitor)
         if vec is not None:
-            res = self._ranked(visitor, vec, recent, k)
+            res = self._ranked(visitor, vec, recent, k, hide_purchased)
         elif recent:
-            res = self._content(visitor, recent, k)
+            res = self._content(visitor, recent, k, hide_purchased)
         else:
             res = self._trending(visitor, k)
         res.timings_ms["total"] = round((time.perf_counter() - t0) * 1000, 3)
@@ -107,7 +122,7 @@ class Recommender:
             pipe = self.store.r.pipeline(transaction=False)
             body = res.to_dict()
             body.pop("cached")
-            pipe.hset(key, str(k), json.dumps(body))
+            pipe.hset(key, field_, json.dumps(body))
             pipe.expire(key, self.cfg.cache_ttl_s)
             pipe.execute()
         return res
@@ -125,7 +140,7 @@ class Recommender:
         return max(self.store.clock() or 0.0, self.b.cutoff)
 
     # ----------------------------------------------------------------- routes
-    def _ranked(self, visitor, vec, recent, k) -> Result:
+    def _ranked(self, visitor, vec, recent, k, hide_purchased=False) -> Result:
         cfg, T = self.cfg, {}
         t = time.perf_counter()
         _, tt = self.live.index.search(vec[None, :], cfg.n_tt)
@@ -170,22 +185,54 @@ class Recommender:
         eng = self.ranker.predict(X, num_threads=1)
         p = np.clip(self.buyer.predict(X, num_threads=1), 1e-6, 1 - 1e-6)
         score = (1 - cfg.blend_w) * _z(eng) + cfg.blend_w * _z(np.log(p / (1 - p)))
+        ui_n, ui_max = X[:, _UI_EVENTS], X[:, _UI_MAX]
+        bought = ui_max >= 3
+        if hide_purchased:
+            score = np.where(bought, -np.inf, score)
         T["ranking"] = (time.perf_counter() - t) * 1000
 
         t = time.perf_counter()
         top = np.argsort(-score, kind="stable")[: cfg.mmr_pool]
+        top = top[np.isfinite(score[top])]
         order = top[mmr(score[top], self.item_vecs[cand[top]], k, cfg.mmr_lambda)]
         T["diversity"] = (time.perf_counter() - t) * 1000
 
+        hist_arr = np.array(hist, np.int64)
         items = []
         for j in order:
-            src = ("history" if hist_pos[j] < 99 else
-                   "two-tower" if tt_rank[j] <= cfg.n_tt else "trending")  # fmt: skip
-            items.append(self._item(cand[j], float(score[j]), src, p_buy=float(p[j])))
+            c = int(cand[j])
+            if hist_pos[j] < 99:
+                src = "history"
+                verb = {3: "You bought this", 2: "You added this to your cart"}.get(
+                    int(ui_max[j]), "You viewed this"
+                )
+                times = int(ui_n[j])
+                reason = verb + (f" ({times}×)" if times > 1 and ui_max[j] < 3 else "")
+            elif tt_rank[j] <= cfg.n_tt:
+                src = "two-tower"
+                reason = "Matches your recent taste"
+                if len(hist_arr):
+                    near = hist_arr[np.argmax(self.item_vecs[hist_arr] @ self.item_vecs[c])]
+                    reason = f"Similar to item {int(self.b.item_ids[near])}"
+            else:
+                src = "trending"
+                reason = f"Trending this week (#{int(trend_rank[j])})"
+            items.append(self._item(c, float(score[j]), src, p_buy=float(p[j]), reason=reason))
+        pipeline = {
+            "candidates": {
+                "two_tower": int(len(tt)),
+                "history": int(len(hist)),
+                "trending": int(len(trend)),
+                "unique": int(n),
+            },
+            "hidden_purchased": int(bought.sum()) if hide_purchased else 0,
+            "mmr_pool": int(len(top)),
+            "returned": len(items),
+        }
         return Result(int(visitor), "ranked", items,
-                      {kk: round(v, 3) for kk, v in T.items()})  # fmt: skip
+                      {kk: round(v, 3) for kk, v in T.items()}, pipeline=pipeline)  # fmt: skip
 
-    def _content(self, visitor, recent, k) -> Result:
+    def _content(self, visitor, recent, k, hide_purchased=False) -> Result:
         t = time.perf_counter()
         ctx = list(dict.fromkeys(self.cidx[i] for i, _, _ in recent if i in self.cidx))
         if not ctx:
@@ -195,24 +242,35 @@ class Recommender:
         scores[ctx] = -np.inf
         top = np.argpartition(-scores, k)[:k]
         top = top[np.argsort(-scores[top])]
-        items = [self._item(c, float(scores[c]), "content") for c in top if scores[c] > 0]
+        top = [int(c) for c in top if scores[c] > 0]
+        near = {}
+        if top:  # which clicked item each result is most similar to
+            sims = (self.b.tfidf[ctx] @ self.b.tfidf[top].T).toarray()
+            near = {c: ctx[int(np.argmax(sims[:, j]))] for j, c in enumerate(top)}
+        items = [
+            self._item(c, float(scores[c]), "content",
+                       reason=f"Similar details to item {int(self.b.item_ids[near[c]])}")
+            for c in top
+        ]  # fmt: skip
         ms = round((time.perf_counter() - t) * 1000, 3)
         if len(items) < k:
             seen = {it["item_id"] for it in items} | {i for i, _, _ in recent}
             items += [x for x in self._trending(visitor, 2 * k).items
                       if x["item_id"] not in seen][: k - len(items)]  # fmt: skip
-        return Result(int(visitor), "content", items, {"content_knn": ms})
+        return Result(int(visitor), "content", items, {"content_knn": ms},
+                      pipeline={"context_items": len(ctx), "returned": len(items)})  # fmt: skip
 
     def _trending(self, visitor, k) -> Result:
         live = self.store.trending(k)
         ids = live if len(live) >= k else [int(self.b.item_ids[i]) for i in self.b.trending[:k]]
-        return Result(int(visitor), "trending",
-                      [self._item(self.cidx.get(i, -1), None, "trending", item_id=i)
-                       for i in ids])  # fmt: skip
+        items = [self._item(self.cidx.get(i, -1), None, "trending", item_id=i,
+                            reason="Popular right now") for i in ids]  # fmt: skip
+        return Result(int(visitor), "trending", items,
+                      pipeline={"source": "live" if len(live) >= k else "batch"})  # fmt: skip
 
-    def _item(self, c, score, source, p_buy=None, item_id=None) -> dict:
+    def _item(self, c, score, source, p_buy=None, item_id=None, reason=None) -> dict:
         out = self.item_info(int(self.b.item_ids[c]) if item_id is None else item_id)
-        out.update(score=None if score is None else round(score, 4), source=source)
+        out.update(score=None if score is None else round(score, 4), source=source, reason=reason)
         if p_buy is not None:
             out["p_conversion"] = round(p_buy, 4)
         return out

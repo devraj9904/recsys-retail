@@ -147,3 +147,24 @@ def test_api_end_to_end(world):
     assert not client.get(f"/recommend/{v}", params={"k": 8}).json()["cached"]
     m = client.get("/metrics").text
     assert "recsys_request_seconds" in m and 'recsys_events_total{event="view"' in m
+
+
+def test_reasons_pipeline_and_hide_purchased(world):
+    from recsys.streaming.events import Event
+
+    rec = world["rec"]
+    v = 10**9 + 7
+    item = int(rec.b.item_ids[0])
+    rec.live.ingest([Event(v, item, "transaction", rec.clock() + 1)])
+    r = rec.recommend(v, 8, use_cache=False)
+    assert r.route == "ranked" and r.pipeline["candidates"]["history"] == 1
+    assert all(i["reason"] for i in r.items)
+    mine = [i for i in r.items if i["item_id"] == item]
+    if mine:
+        assert mine[0]["reason"] == "You bought this"
+    hidden = rec.recommend(v, 8, use_cache=True, hide_purchased=True)
+    assert item not in [i["item_id"] for i in hidden.items]
+    assert hidden.pipeline["hidden_purchased"] == 1
+    # The two variants are cached separately.
+    assert rec.recommend(v, 8, hide_purchased=True).cached
+    assert not rec.recommend(v, 8, hide_purchased=False).cached

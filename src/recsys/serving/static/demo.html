@@ -6,153 +6,354 @@
 <title>recsys-retail demo</title>
 <style>
   :root {
-    --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e4e4e0;
-    --accent: #2f6fed; --accent-ink: #ffffff; --new: #e8f5e9; --new-ink: #1b5e20;
-    --hist: #fff4e0; --tt: #e8efff; --trend: #f1e8ff; --content: #e6f6f4;
+    --bg: #f6f6f3; --panel: #ffffff; --ink: #1c1c1e; --muted: #6a6a70; --faint: #9a9aa0;
+    --line: #e3e3de; --soft: #f0f0ec; --accent: #2f6fed; --accent-ink: #ffffff;
+    --new: #e9f6ea; --new-line: #7cc784; --new-ink: #1b5e20;
+    --hist: #fff1d6; --hist-ink: #7a4b00; --tt: #e5edff; --tt-ink: #1e3f9a;
+    --trend: #f0e6ff; --trend-ink: #5b2a99; --content: #dff4f1; --content-ink: #0f5c52;
+    --toast: #1c1c1e; --toast-ink: #ffffff; --shadow: 0 1px 2px rgba(0,0,0,.04);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #141416; --panel: #1d1d20; --ink: #ececef; --muted: #9a9aa2; --line: #2c2c31;
-      --accent: #6d9bff; --accent-ink: #0b0b0c; --new: #183a1d; --new-ink: #a5d6a7;
-      --hist: #3a2e14; --tt: #1c2742; --trend: #2c1f40; --content: #143331;
+      --bg: #121214; --panel: #1b1b1e; --ink: #ececef; --muted: #a0a0a8; --faint: #6f6f78;
+      --line: #2b2b30; --soft: #232327; --accent: #6d9bff; --accent-ink: #0b0b0c;
+      --new: #15301a; --new-line: #3f8f4a; --new-ink: #a6dcab;
+      --hist: #3a2c10; --hist-ink: #f3cd85; --tt: #1b2645; --tt-ink: #a9c1ff;
+      --trend: #2b1d40; --trend-ink: #d3b8ff; --content: #11302c; --content-ink: #8fe0d3;
+      --toast: #ececef; --toast-ink: #121214; --shadow: none;
     }
   }
   * { box-sizing: border-box; }
   body { margin: 0; font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
          background: var(--bg); color: var(--ink); }
-  header { padding: 16px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
-  header h1 { margin: 0; font-size: 18px; }
-  header p { margin: 4px 0 0; color: var(--muted); }
-  main { display: grid; grid-template-columns: 340px 1fr; gap: 16px; padding: 16px 20px; }
-  @media (max-width: 860px) { main { grid-template-columns: 1fr; padding: 12px 16px; } }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-            padding: 14px; min-width: 0; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
-       margin: 0 0 10px; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
+           display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 17px; }
+  header p { margin: 0; color: var(--muted); flex: 1; min-width: 240px; }
+  button.link { background: none; border: none; color: var(--accent); padding: 0; cursor: pointer;
+                font: inherit; }
+  .how { display: none; background: var(--panel); border-bottom: 1px solid var(--line);
+         padding: 12px 20px 16px; }
+  .how.open { display: block; }
+  .how ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 980px; }
+  main { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 16px; padding: 16px 20px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 12px 16px; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+            padding: 14px; min-width: 0; box-shadow: var(--shadow); }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+       margin: 0 0 10px; font-weight: 600; }
+  h2 + h2, .gap { margin-top: 16px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   select, input, button { font: inherit; color: inherit; background: var(--bg);
-                          border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
-  input { width: 130px; }
+                          border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; }
+  select { max-width: 100%; }
+  input { width: 120px; }
+  input[type=checkbox] { width: auto; padding: 0; margin: 0; accent-color: var(--accent); }
   button { cursor: pointer; }
+  button:hover { border-color: var(--faint); }
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; color: var(--muted); }
-  .kv b { color: var(--ink); font-weight: 600; }
-  ol.hist { list-style: none; padding: 0; margin: 8px 0 0; max-height: 360px; overflow: auto; }
-  ol.hist li { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0;
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .stat { background: var(--soft); border-radius: 8px; padding: 8px; }
+  .stat b { display: block; font-size: 18px; }
+  .stat span { color: var(--muted); font-size: 12px; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .cats { display: grid; gap: 6px; }
+  .bar { height: 6px; border-radius: 99px; background: var(--soft); overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 99px; }
+  .catrow { display: grid; grid-template-columns: 1fr 34px; gap: 2px 8px; font-size: 12px; }
+  .catrow .bar { grid-column: 1 / -1; }
+  ol.hist { list-style: none; padding: 0; margin: 0; max-height: 330px; overflow: auto; }
+  ol.hist li { display: flex; gap: 8px; align-items: center; padding: 6px 0;
                border-top: 1px solid var(--line); }
-  .tag { font-size: 11px; padding: 1px 6px; border-radius: 99px; background: var(--bg);
-         border: 1px solid var(--line); white-space: nowrap; }
+  ol.hist li:first-child { border-top: none; }
+  .ev { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px; white-space: nowrap; }
+  .ev-1 { background: var(--soft); color: var(--muted); }
+  .ev-2 { background: var(--hist); color: var(--hist-ink); }
+  .ev-3 { background: var(--new); color: var(--new-ink); }
+  .times { color: var(--muted); font-size: 12px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; }
+  .grow { flex: 1; min-width: 0; }
   .meta { color: var(--muted); font-size: 12px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
-  .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px; position: relative; }
-  .card.is-new { background: var(--new); }
-  .card .new { position: absolute; top: 8px; right: 8px; font-size: 11px; color: var(--new-ink);
-               font-weight: 600; }
-  .card h3 { margin: 0 0 4px; font-size: 14px; }
-  .src-history { background: var(--hist); } .src-two-tower { background: var(--tt); }
-  .src-trending { background: var(--trend); } .src-content { background: var(--content); }
-  .actions { display: flex; gap: 4px; margin-top: 8px; }
+
+  .summary { display: grid; gap: 10px; margin-bottom: 14px; }
+  .routebox { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+  .route { font-weight: 600; font-size: 12px; padding: 3px 9px; border-radius: 99px; }
+  .route-ranked { background: var(--tt); color: var(--tt-ink); }
+  .route-content { background: var(--content); color: var(--content-ink); }
+  .route-trending { background: var(--trend); color: var(--trend-ink); }
+  .funnel { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px;
+            color: var(--muted); }
+  .funnel b { color: var(--ink); }
+  .funnel .arrow { color: var(--faint); }
+  .timing { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--soft); }
+  .timing i { display: block; height: 100%; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .legend span { display: inline-flex; gap: 5px; align-items: center; }
+  .sq { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .toolbar { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+             align-items: center; margin-bottom: 10px; }
+  label.toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; cursor: pointer; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 10px 10px 12px;
+          position: relative; display: flex; flex-direction: column; gap: 6px; background: var(--panel);
+          border-left-width: 4px; }
+  .card.is-new { background: var(--new); border-color: var(--new-line); }
+  .card .rank { position: absolute; top: 8px; right: 10px; font-size: 12px; color: var(--faint);
+                font-weight: 600; }
+  .card .newtag { color: var(--new-ink); font-weight: 700; font-size: 11px; margin-left: 6px; }
+  .card h3 { margin: 0; font-size: 14px; padding-right: 28px; }
+  .why { font-size: 13px; }
+  .tag { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px; white-space: nowrap; }
+  .src-history { background: var(--hist); color: var(--hist-ink); }
+  .src-two-tower { background: var(--tt); color: var(--tt-ink); }
+  .src-trending { background: var(--trend); color: var(--trend-ink); }
+  .src-content { background: var(--content); color: var(--content-ink); }
+  .conv { font-size: 12px; font-weight: 600; display: inline-flex; gap: 5px; align-items: center; }
+  .conv.high { color: var(--new-ink); }
+  .conv.some { color: var(--hist-ink); }
+  .actions { display: flex; gap: 4px; margin-top: auto; padding-top: 4px; }
   .actions button { flex: 1; padding: 4px; font-size: 12px; }
-  .status { color: var(--muted); font-size: 12px; min-height: 18px; }
-  code { font-size: 12px; }
+  .empty { color: var(--muted); padding: 24px 0; text-align: center; }
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px);
+           background: var(--toast); color: var(--toast-ink); padding: 9px 14px; border-radius: 9px;
+           opacity: 0; transition: .2s; pointer-events: none; max-width: calc(100% - 32px);
+           font-size: 13px; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
 <header>
   <h1>recsys-retail</h1>
-  <p>Pick a visitor, see what they did and what the system recommends. Click an action on any
-     item to send an event, and watch the recommendations update.</p>
+  <p>Live recommendations for RetailRocket shoppers. Click View, Cart or Buy on any item and the
+     list re-ranks with that click included.
+     <button class="link" id="howbtn" aria-expanded="false">How it works</button></p>
 </header>
+<div class="how" id="how">
+  <ol>
+    <li><b>Memory.</b> Every click is stored in Redis: the visitor's last 90 events, session and favourite categories.</li>
+    <li><b>Taste profile.</b> A neural network (the user tower of a two-tower model) turns that history into 64 numbers. Every product has 64 numbers too, learned from millions of past clicks.</li>
+    <li><b>Shortlist (~120).</b> The 100 products closest to the visitor's profile (FAISS search over 148k items), plus items they already touched, plus this week's trending items.</li>
+    <li><b>Ranking.</b> 24 clues per product (how often and how recently they touched it, popularity, how often viewers buy it, category and price fit) feed two LightGBM models: one for engagement, one for purchase intent (add-to-cart or purchase). Their scores are blended.</li>
+    <li><b>Variety.</b> MMR swaps near-duplicates for different items, then the top 12 are shown.</li>
+    <li><b>New visitors.</b> No clicks: trending items. Clicks only on items the models never saw: products with similar details (content similarity).</li>
+  </ol>
+</div>
 <main>
-  <section>
+  <section aria-label="Visitor">
     <h2>Visitor</h2>
     <div class="row">
-      <select id="demo" aria-label="Demo visitors"></select>
+      <select id="demo" aria-label="Sample visitors"></select>
       <button id="newv" title="A visitor with no history">New visitor</button>
     </div>
-    <div class="row">
+    <div class="row" style="margin-top:8px">
       <input id="vid" type="number" min="0" placeholder="visitor id" aria-label="Visitor id">
       <button class="primary" id="load">Load</button>
     </div>
-    <div class="kv" id="vstats"></div>
-    <h2 style="margin-top:14px">Recent activity</h2>
+    <div class="stats" id="stats"></div>
+    <div class="note" id="vnote"></div>
+    <h2 class="gap">Favourite categories</h2>
+    <div class="cats" id="cats"></div>
+    <h2 class="gap">Recent activity</h2>
     <ol class="hist" id="hist"></ol>
   </section>
-  <section>
-    <div class="row" style="justify-content:space-between">
-      <h2 style="margin:0">Recommendations</h2>
-      <span class="status" id="status"></span>
+
+  <section aria-label="Recommendations">
+    <div class="summary">
+      <div class="routebox">
+        <span class="route" id="route"></span>
+        <span class="grow meta" id="routeText"></span>
+        <span class="meta" id="latency"></span>
+      </div>
+      <div class="funnel" id="funnel"></div>
+      <div class="timing" id="timing" title="Time per pipeline stage"></div>
+      <div class="legend" id="tlegend"></div>
     </div>
+    <div class="toolbar">
+      <div class="legend">
+        <span><span class="tag src-history">history</span>you touched it</span>
+        <span><span class="tag src-two-tower">two-tower</span>matches your taste</span>
+        <span><span class="tag src-trending">trending</span>popular this week</span>
+        <span><span class="tag src-content">content</span>similar details</span>
+      </div>
+      <label class="toggle"><input type="checkbox" id="hideBought"> Hide items I bought</label>
+    </div>
+    <div class="meta" id="diversity" style="margin-bottom:8px"></div>
     <div class="grid" id="recs"></div>
   </section>
 </main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>
 const $ = (id) => document.getElementById(id);
-let visitor = null, previous = new Set();
+const K = 12;
+let visitor = null, previous = null, hideBought = false;
+try { hideBought = localStorage.getItem("hideBought") === "1"; } catch (e) {}
+$("hideBought").checked = hideBought;
+
+const EV = {1: "viewed", 2: "added to cart", 3: "bought"};
+const ROUTE = {
+  ranked: ["Personalised", "Two-tower shortlist, ranked by LightGBM, diversified with MMR."],
+  content: ["Content-based", "Only new items clicked so far, so we match product details instead of click history."],
+  trending: ["Trending", "No clicks yet. Click any item to personalise."],
+};
+const STAGES = [["retrieval", "shortlist"], ["features", "features"], ["ranking", "ranking"],
+                ["diversity", "variety"], ["content_knn", "content match"]];
+const STAGE_COLOR = {retrieval: "#5b8def", features: "#e0a030", ranking: "#9b6bdf",
+                     diversity: "#3fb8a2", content_knn: "#3fb8a2"};
+
+function catColor(c) {
+  if (c == null) return "var(--faint)";
+  let h = 0; for (const ch of String(c)) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `hsl(${h} 62% 52%)`;
+}
+const price = (p) => p == null ? "price n/a" : `price ${Math.round(p).toLocaleString()}`;
+const cat = (c) => c == null ? "no category" : `category ${c}`;
+const esc = (s) => String(s).replace(/[&<>"]/g, (m) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[m]));
 
 async function api(path, opts) {
   const r = await fetch(path, opts);
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return r.json();
 }
-const fmtPrice = (p) => p == null ? "price n/a" : `price ${Math.round(p).toLocaleString()}`;
-const fmtCat = (c) => c == null ? "category n/a" : `category ${c}`;
-const evName = {1: "view", 2: "add to cart", 3: "purchase"};
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), 2600);
+}
 
-async function loadVisitor(v, keepPrev) {
-  visitor = v; $("vid").value = v;
-  if (!keepPrev) previous = new Set();
-  const [info, recs] = await Promise.all([api(`/visitors/${v}`), api(`/recommend/${v}?k=12`)]);
+function renderVisitor(v, info) {
   const s = info.stats, ss = info.session;
-  $("vstats").innerHTML = `
-    <span>visitor</span><b>${v}</b>
-    <span>events</span><b>${s.events ?? 0}</b>
-    <span>purchases</span><b>${s.transaction ?? 0}</b>
-    <span>session</span><b>${ss.session_id ? `#${ss.session_id}, ${ss.session_events} events` : "none"}</b>
-    <span>user vector</span><b>${info.has_vector ? "yes" : "no (cold start)"}</b>`;
-  $("hist").innerHTML = info.recent.length ? info.recent.map((e) => `
-    <li><span>${evName[e.weight]} <b>${e.item_id}</b>
-      <span class="meta">${fmtCat(e.category)}</span></span>
-      <span class="tag">${e.warm ? "known item" : "new item"}</span></li>`).join("")
-    : `<li class="meta">No activity yet.</li>`;
+  $("stats").innerHTML = `
+    <div class="stat"><b>${s.events ?? 0}</b><span>events</span></div>
+    <div class="stat"><b>${s.addtocart ?? 0}</b><span>cart adds</span></div>
+    <div class="stat"><b>${s.transaction ?? 0}</b><span>purchases</span></div>`;
+  $("vnote").textContent = info.has_vector
+    ? `Visitor ${v} · taste profile ready · session #${ss.session_id ?? 0}`
+    : `Visitor ${v} · no taste profile yet (cold start)`;
+
+  // Collapse consecutive repeats: "viewed 74612 ×10".
+  const groups = [];
+  for (const e of info.recent) {
+    const g = groups[groups.length - 1];
+    if (g && g.item_id === e.item_id && g.weight === e.weight) g.n++;
+    else groups.push({...e, n: 1});
+  }
+  $("hist").innerHTML = groups.length ? groups.map((e) => `
+    <li><span class="ev ev-${e.weight}">${EV[e.weight]}</span>
+      <span class="grow">item <b>${e.item_id}</b>${e.n > 1 ? ` <span class="times">×${e.n}</span>` : ""}
+        <div class="meta"><span class="dot" style="background:${catColor(e.category)}"></span>
+          ${cat(e.category)}${e.warm ? "" : " · new item"}</div></span></li>`).join("")
+    : `<li class="meta">No activity yet. Click an item on the right.</li>`;
+
+  const counts = {};
+  for (const e of info.recent) if (e.category != null) counts[e.category] = (counts[e.category] || 0) + e.weight;
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const total = top.reduce((a, [, n]) => a + n, 0) || 1;
+  $("cats").innerHTML = top.length ? top.map(([c, n]) => `
+    <div class="catrow"><span><span class="dot" style="background:${catColor(c)}"></span> category ${c}</span>
+      <span class="meta">${Math.round(100 * n / total)}%</span>
+      <div class="bar"><i style="width:${100 * n / total}%;background:${catColor(c)}"></i></div></div>`).join("")
+    : `<div class="meta">None yet.</div>`;
+}
+
+function renderRecs(recs) {
+  const [label, text] = ROUTE[recs.route] || [recs.route, ""];
+  $("route").className = `route route-${recs.route}`;
+  $("route").textContent = label;
+  $("routeText").textContent = text;
   const t = recs.timings_ms || {};
-  $("status").textContent = `route: ${recs.route} · ${recs.cached ? "cached" :
-      `${(t.total ?? 0).toFixed(1)} ms`}`;
-  $("recs").innerHTML = recs.items.map((it) => {
-    const isNew = previous.size && !previous.has(it.item_id);
-    return `<div class="card ${isNew ? "is-new" : ""}">
-      ${isNew ? `<span class="new">new</span>` : ""}
-      <h3>item ${it.item_id}</h3>
-      <div class="meta">${fmtCat(it.category)} · ${fmtPrice(it.price)}</div>
-      <div class="row" style="margin:6px 0 0">
-        <span class="tag src-${it.source}">${it.source}</span>
-        ${it.p_conversion != null ? `<span class="tag">p(cart/buy) ${it.p_conversion.toFixed(3)}</span>` : ""}
-      </div>
+  $("latency").textContent = recs.cached ? "served from cache" : `${(t.total ?? 0).toFixed(1)} ms`;
+
+  const p = recs.pipeline || {};
+  if (recs.route === "ranked" && p.candidates) {
+    const c = p.candidates;
+    $("funnel").innerHTML = `<b>${c.two_tower}</b> similar-taste + <b>${c.history}</b> touched
+      + <b>${c.trending}</b> trending <span class="arrow">→</span> <b>${c.unique}</b> unique
+      <span class="arrow">→</span> ranked <span class="arrow">→</span> top <b>${p.mmr_pool}</b>
+      diversified <span class="arrow">→</span> <b>${p.returned}</b> shown
+      ${p.hidden_purchased ? `· ${p.hidden_purchased} bought item(s) hidden` : ""}`;
+  } else if (recs.route === "content") {
+    $("funnel").innerHTML = `Matched details of <b>${p.context_items}</b> clicked item(s) against 233k products`;
+  } else {
+    $("funnel").innerHTML = `Most popular items ${p.source === "live" ? "from live clicks" : "in the week before the data's cutoff"}`;
+  }
+  const stages = STAGES.filter(([k]) => t[k] != null);
+  const sum = stages.reduce((a, [k]) => a + t[k], 0);
+  $("timing").style.display = $("tlegend").style.display = (!recs.cached && sum) ? "" : "none";
+  $("timing").innerHTML = stages.map(([k]) => `<i style="width:${100 * t[k] / sum}%;background:${STAGE_COLOR[k]}"></i>`).join("");
+  $("tlegend").innerHTML = stages.map(([k, n]) =>
+    `<span><i class="sq" style="background:${STAGE_COLOR[k]}"></i>${n} ${t[k].toFixed(1)} ms</span>`).join("");
+
+  const cats = new Set(recs.items.map((i) => i.category));
+  $("diversity").textContent = `${recs.items.length} items across ${cats.size} categor${cats.size === 1 ? "y" : "ies"}`;
+
+  let fresh = 0;
+  $("recs").innerHTML = recs.items.length ? recs.items.map((it, i) => {
+    const isNew = previous && !previous.has(it.item_id);
+    fresh += isNew ? 1 : 0;
+    // The conversion model is a ranking signal trained with class weights, so its
+    // output is not a calibrated probability: show a level, not a percentage.
+    const pc = it.p_conversion;
+    const conv = pc == null || pc < 0.1 ? "" :
+      `<div class="conv ${pc >= 0.5 ? "high" : "some"}" title="Conversion model score ${pc.toFixed(2)}: likelihood of add-to-cart or purchase relative to other items (not a calibrated probability)">
+        ● ${pc >= 0.5 ? "High" : "Some"} purchase intent</div>`;
+    return `<div class="card ${isNew ? "is-new" : ""}" style="border-left-color:${catColor(it.category)}">
+      <span class="rank">#${i + 1}</span>
+      <h3>item ${it.item_id}${isNew ? `<span class="newtag">NEW</span>` : ""}</h3>
+      <div class="meta"><span class="dot" style="background:${catColor(it.category)}"></span>
+        ${cat(it.category)} · ${price(it.price)}</div>
+      <div class="row"><span class="tag src-${it.source}">${it.source}</span></div>
+      <div class="why">${esc(it.reason || "")}</div>
+      ${conv}
       <div class="actions">
         <button data-item="${it.item_id}" data-ev="view">View</button>
         <button data-item="${it.item_id}" data-ev="addtocart">Cart</button>
         <button data-item="${it.item_id}" data-ev="transaction">Buy</button>
       </div></div>`;
-  }).join("");
+  }).join("") : `<div class="empty">Nothing to show.</div>`;
   previous = new Set(recs.items.map((i) => i.item_id));
+  return fresh;
+}
+
+async function loadVisitor(v, keepPrev) {
+  visitor = v; $("vid").value = v;
+  if (!keepPrev) previous = null;
+  const q = `k=${K}${hideBought ? "&hide_purchased=true" : ""}`;
+  const [info, recs] = await Promise.all([api(`/visitors/${v}?n=40`), api(`/recommend/${v}?${q}`)]);
+  renderVisitor(v, info);
+  return renderRecs(recs);
 }
 
 $("recs").addEventListener("click", async (e) => {
   const b = e.target.closest("button[data-item]");
   if (!b || visitor == null) return;
-  $("status").textContent = "sending event…";
-  await api("/events", {method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({visitor_id: visitor, item_id: +b.dataset.item, event: b.dataset.ev})});
-  setTimeout(() => loadVisitor(visitor, true), 150);
+  const item = +b.dataset.item, ev = b.dataset.ev;
+  b.disabled = true;
+  try {
+    await api("/events", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({visitor_id: visitor, item_id: item, event: ev})});
+    const fresh = await loadVisitor(visitor, true);
+    const verb = {view: "Viewed", addtocart: "Added to cart", transaction: "Bought"}[ev];
+    toast(`${verb} item ${item}. ${fresh ? `${fresh} new recommendation${fresh > 1 ? "s" : ""}.` : "Ranking updated."}`);
+  } catch (err) { toast(err.message); } finally { b.disabled = false; }
 });
 $("load").onclick = () => $("vid").value && loadVisitor(+$("vid").value);
+$("vid").addEventListener("keydown", (e) => e.key === "Enter" && $("load").click());
 $("demo").onchange = () => loadVisitor(+$("demo").value);
 $("newv").onclick = () => loadVisitor(900000000 + Math.floor(Math.random() * 1e6));
+$("hideBought").onchange = (e) => {
+  hideBought = e.target.checked;
+  try { localStorage.setItem("hideBought", hideBought ? "1" : "0"); } catch (err) {}
+  if (visitor != null) loadVisitor(visitor);
+};
+$("howbtn").onclick = () => {
+  const open = $("how").classList.toggle("open");
+  $("howbtn").setAttribute("aria-expanded", open);
+};
 
 api("/demo/visitors").then(({visitors}) => {
-  $("demo").innerHTML = visitors.map((v) => `<option value="${v}">visitor ${v}</option>`).join("");
+  $("demo").innerHTML = visitors.map((v) => `<option value="${v}">sample visitor ${v}</option>`).join("");
   if (visitors.length) loadVisitor(visitors[0]);
-}).catch((e) => { $("status").textContent = e.message; });
+}).catch((e) => toast(e.message));
 </script>
 </body>
 </html>
